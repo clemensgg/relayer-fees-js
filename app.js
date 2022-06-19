@@ -3,7 +3,7 @@
 const config = {
     "chain": "osmosis-1",
     "rest": "http://localhost:1317",
-    "output": "$HOME/output.csv",               // must be .csv
+    "output": "/home/ubuntu/output.csv",        // must be .csv
     "startBlock": 1,                            // must not be 0
     "maxBlocks": "inf"                          // "inf" to walk until latest block
 }
