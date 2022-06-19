@@ -2,9 +2,13 @@
 
 uses Gaiad REST endpoint to walk blocks, logs relayer transaction fees
 
-to run:
+configure via config object:
+```
+vim app.js
+```
 
+to run:
 ```
 npm install
-npm run start
+node app.js
 ```
