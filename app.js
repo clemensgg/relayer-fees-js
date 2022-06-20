@@ -137,12 +137,14 @@ async function blockwalker(maxblocks) {
             }
         }
         // sort txs, calculate totals & purge tx data every 10k results to save RAM
-        if (results.length >= 5) {
+        if (results.length >= 10000) {
             data = sortRelayTxs(results,data);
             data = calculateFeeTotals(data);
             results = [];
         }
         if (block >= (config.startBlock + maxblocks)) {
+            data = sortRelayTxs(results, data);
+            data = calculateFeeTotals(data);
             repeat = false;
         }
     }
