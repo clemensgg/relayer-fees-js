@@ -17,62 +17,83 @@ const ObjectsToCsv = require('objects-to-csv')
 
 function calculateFeeTotals(data) {
     data.forEach((relayer) => {
-        var totalFees = []
-        relayer.txs.forEach((tx) => {
-            var feeamounts = tx.authInfo.fee.amount;
-            var valid = false;
-            feeamounts.forEach((fee) => {
-                for (var i = 0; i < totalFees.length; i++) {
-                    if (fee.denom == totalFees[i].denom) {
-                        totalFees[i].amount = parseInt(totalFees[i].amount) + parseInt(fee.amount);
-                        valid = true;
+        if (relayer.hasOwnProperty('txs')) {
+            var totalFees = [];
+            relayer.txs.forEach((tx) => {
+                var feeamounts = tx.authInfo.fee.amount;
+                var valid = false;
+                feeamounts.forEach((fee) => {
+                    for (var i = 0; i < totalFees.length; i++) {
+                        if (fee.denom == totalFees[i].denom) {
+                            totalFees[i].amount = parseInt(totalFees[i].amount) + parseInt(fee.amount);
+                            valid = true;
+                        }
                     }
-                }
-                if (valid == false) {
-                    totalFees.push(fee);
-                }
+                    if (valid == false) {
+                        totalFees.push(fee);
+                    }
+                });
             });
-        });
-        relayer.total_fees = totalFees;
-        relayer.total_txs = relayer.txs.length;
+            if (relayer.hasOwnProperty('total_fees') == false) {
+                relayer.total_fees = totalFees;
+                relayer.total_txs = relayer.txs.length;
+            }
+            else {
+                relayer.total_fees.forEach((fee) => {
+                    var valid = false;
+                    totalFees.forEach((newFee) => {
+                        if (fee.denom == newFee.denom) {
+                            valid = true;
+                            fee.amount = parseInt(fee.amount) + parseInt(newFee.amount)
+                        }
+                    });
+                    if (valid == false) {
+                        fee.push(newFee);
+                    }
+                });
+                relayer.total_txs = parseInt(relayer.total_txs) + parseInt(relayer.txs.length);
+            }
+            delete relayer.txs;
+        }
     });
     return data;
 }
 
-function sortRelayTxs(txs) {
-    var results = [];
+function sortRelayTxs(txs, data) {
     txs.forEach((tx) => {
-        tx.authInfo.signerInfos.forEach((signerInfo) => {
-            let address = "";
-            if (tx.authInfo.fee.granter == "") {
-                let key = PubKey.toJSON(PubKey.decode(signerInfo.publicKey.value)).key.toString();
-                let pubkey = {
-                    "type": "tendermint/PubKeySecp256k1",
-                    "value": key
+        let address = "";
+        if (tx.authInfo.fee.granter == "") {
+            let key = PubKey.toJSON(PubKey.decode(tx.authInfo.signerInfos[0].publicKey.value)).key.toString();
+            let pubkey = {
+                "type": "tendermint/PubKeySecp256k1",
+                "value": key
+            }
+            address = pubkeyToAddress(pubkey, config.addr_prefix);
+        }
+        else address = tx.authInfo.fee.granter;
+        var indb = false;
+        for (var i = 0; i < data.length; i++) {
+            if (data[i].address == address) {
+                if (data[i].hasOwnProperty('txs')) {
+                    data[i].txs.push(tx);
                 }
-                address = pubkeyToAddress(pubkey, config.addr_prefix);
+                else data[i].txs = [tx]
+                indb = true;
             }
-            else address = tx.authInfo.fee.granter;
-            var indb = false;
-            for (var i = 0; i < results.length; i++) {
-                if (results[i].address == address) {
-                    results[i].txs.push(tx);
-                    indb = true;
-                }
-            }
-            if (indb == false) {
-                results.push({
-                    "address": address,
-                    "txs": [tx]
-                });
-            }
-        });
+        }
+        if (indb == false) {
+            data.push({
+                "address": address,
+                "txs": [tx]
+            });
+        }
     });
-    return results;
+    return data;
 }
 
 async function blockwalker(maxblocks) {
     var results = [];
+    var data = [];
     var block = 0;
     var repeat = true;
     while (repeat) {
@@ -115,11 +136,17 @@ async function blockwalker(maxblocks) {
                 console.log(`block ${block} logged txs: ${ibcCounter}`);
             }
         }
+        // sort txs, calculate totals & purge tx data every 10k results to save RAM
+        if (results.length >= 5) {
+            data = sortRelayTxs(results,data);
+            data = calculateFeeTotals(data);
+            results = [];
+        }
         if (block >= (config.startBlock + maxblocks)) {
             repeat = false;
         }
     }
-    return results
+    return data;
 }
 
 async function getLastBlock() {
@@ -139,22 +166,19 @@ async function main() {
         var latest = await getLastBlock();
         maxblocks = latest - config.startBlock;
     }
-    var txs = await blockwalker(maxblocks);
-    var data = sortRelayTxs(txs);
-    data = calculateFeeTotals(data);
+    var data = await blockwalker(maxblocks);
 
     data.forEach((relayer) => {
         console.log(relayer.address);
         console.log(`total txs: ${relayer.total_txs}`);
         relayer.total_fees.forEach((fee) => {
-            console.log(`denom: ${fee.denom} amount ${fee.amount}`);
+            console.log(`denom: ${fee.denom} amount: ${fee.amount}`);
         });
         delete relayer.txs;
     });
 
     const csv = new ObjectsToCsv(data)
     await csv.toDisk(config.output);
-
     console.log("done");
 }
 
