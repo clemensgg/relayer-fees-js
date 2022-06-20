@@ -39,9 +39,9 @@ function calculateFeeTotals(data) {
                 relayer.total_txs = relayer.txs.length;
             }
             else {
-                relayer.total_fees.forEach((fee) => {
+                totalFees.forEach((newFee) => {
                     var valid = false;
-                    totalFees.forEach((newFee) => {
+                    relayer.total_fees.forEach((fee) => {
                         if (fee.denom == newFee.denom) {
                             valid = true;
                             fee.amount = parseInt(fee.amount) + parseInt(newFee.amount)
