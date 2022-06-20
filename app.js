@@ -2,10 +2,11 @@
 
 const config = {
     "chain": "osmosis-1",
+    "addr_prefix": "osmo",
     "rest": "http://localhost:1317",
-    "output": "/home/ubuntu/output.csv",        // must be .csv
-    "startBlock": 1,                            // must not be 0
-    "maxBlocks": "inf"                          // "inf" to walk until latest block
+    "output": "/home/ubuntu/output.csv",    // must be .csv
+    "startBlock": 1,                        // must not be 0
+    "maxBlocks": 0                          // 0 to walk until latest block
 }
 
 const { Tx } = require('cosmjs-types/cosmos/tx/v1beta1/tx');
@@ -14,15 +15,60 @@ const { pubkeyToAddress } = require('@cosmjs/amino');
 const axios = require('axios');
 const ObjectsToCsv = require('objects-to-csv')
 
-async function getLastBlock() {
-    try {
-        var res = await axios.get(config.rest + '/blocks/latest');
-    }
-    catch (e) {
-        console.log(e);
-        return false;
-    }
-    return res.data.block.header.height;
+function calculateFeeTotals(data) {
+    data.forEach((relayer) => {
+        var totalFees = []
+        relayer.txs.forEach((tx) => {
+            var feeamounts = tx.authInfo.fee.amount;
+            var valid = false;
+            feeamounts.forEach((fee) => {
+                for (var i = 0; i < totalFees.length; i++) {
+                    if (fee.denom == totalFees[i].denom) {
+                        totalFees[i].amount = parseInt(totalFees[i].amount) + parseInt(fee.amount);
+                        valid = true;
+                    }
+                }
+                if (valid == false) {
+                    totalFees.push(fee);
+                }
+            });
+        });
+        relayer.total_fees = totalFees;
+        relayer.total_txs = relayer.txs.length;
+    });
+    return data;
+}
+
+function sortRelayTxs(txs) {
+    var results = [];
+    txs.forEach((tx) => {
+        tx.authInfo.signerInfos.forEach((signerInfo) => {
+            let address = "";
+            if (tx.authInfo.fee.granter == "") {
+                let key = PubKey.toJSON(PubKey.decode(signerInfo.publicKey.value)).key.toString();
+                let pubkey = {
+                    "type": "tendermint/PubKeySecp256k1",
+                    "value": key
+                }
+                address = pubkeyToAddress(pubkey, config.addr_prefix);
+            }
+            else address = tx.authInfo.fee.granter;
+            var indb = false;
+            for (var i = 0; i < results.length; i++) {
+                if (results[i].address == address) {
+                    results[i].txs.push(tx);
+                    indb = true;
+                }
+            }
+            if (indb == false) {
+                results.push({
+                    "address": address,
+                    "txs": [tx]
+                });
+            }
+        });
+    });
+    return results;
 }
 
 async function blockwalker(maxblocks) {
@@ -58,7 +104,10 @@ async function blockwalker(maxblocks) {
                     }
                 });
                 if (isIbcTx) {
-                    results.push(Tx.decode(buff));
+                    var log_data = Tx.decode(buff);
+                    delete log_data.body;
+                    delete log_data.signatures;
+                    results.push(log_data);
                     ibcCounter++;
                 }
             });
@@ -73,61 +122,20 @@ async function blockwalker(maxblocks) {
     return results
 }
 
-function calculateFeeTotals(data) {
-    data.forEach((relayer) => {
-        var totalFees = []
-        relayer.txs.forEach((tx) => {
-            var feeamounts = tx.authInfo.fee.amount;
-            var valid = false;
-            feeamounts.forEach((fee) => {
-                for (var i = 0; i < totalFees.length; i++) {
-                    if (fee.denom == totalFees[i].denom) {
-                        totalFees[i].amount = parseInt(totalFees[i].amount) + parseInt(fee.amount);
-                        valid = true;
-                    }
-                }
-                if (valid == false) {
-                    totalFees.push(fee);
-                }
-            });
-        });
-        relayer.total_fees = totalFees;
-    });
-    return data;
-}
-
-function sortRelayTxs(txs) {
-    var results = [];
-    txs.forEach((tx) => {
-        if (tx.authInfo.fee.granter == "") {
-            let key = PubKey.toJSON(PubKey.decode(tx.authInfo.signerInfos[0].publicKey.value)).key.toString();
-            let pubkey = {
-                "type": "tendermint/PubKeySecp256k1",
-                "value": key
-            }
-            let address = pubkeyToAddress(pubkey, "osmo");
-
-            var indb = false;
-            for (var i = 0; i < results.length; i++) {
-                if (results[i].address == address) {
-                    results[i].txs.push(tx);
-                    indb = true;
-                }
-            }
-            if (indb == false) {
-                results.push({
-                    "address": address,
-                    "txs": [tx]
-                });
-            }
-        }
-    });
-    return results;
+async function getLastBlock() {
+    try {
+        var res = await axios.get(config.rest + '/blocks/latest');
+    }
+    catch (e) {
+        console.log(e);
+        return false;
+    }
+    return res.data.block.header.height;
 }
 
 async function main() {
     var maxblocks = config.maxBlocks;
-    if (maxblocks == 'inf') {
+    if (maxblocks == 0) {
         var latest = await getLastBlock();
         maxblocks = latest - config.startBlock;
     }
@@ -137,13 +145,12 @@ async function main() {
 
     data.forEach((relayer) => {
         console.log(relayer.address);
+        console.log(`total txs: ${relayer.total_txs}`);
         relayer.total_fees.forEach((fee) => {
             console.log(`denom: ${fee.denom} amount ${fee.amount}`);
         });
         delete relayer.txs;
     });
-
-
 
     const csv = new ObjectsToCsv(data)
     await csv.toDisk(config.output);
