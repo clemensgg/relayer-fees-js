@@ -48,7 +48,7 @@ function calculateFeeTotals(data) {
                         }
                     });
                     if (valid == false) {
-                        fee.push(newFee);
+                        relayer.total_fees.push(newFee);
                     }
                 });
                 relayer.total_txs = parseInt(relayer.total_txs) + parseInt(relayer.txs.length);
