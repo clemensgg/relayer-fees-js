@@ -1,6 +1,6 @@
 # relayer-fees-js
 
-uses Gaiad REST endpoint to walk blocks, logs relayer transaction fees, outputs to .csv
+uses Tendermint RPC endpoint to walk blocks, logs relayer transaction fees, outputs to .csv
 
 configure via config object:
 ```

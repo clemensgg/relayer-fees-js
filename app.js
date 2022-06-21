@@ -1,9 +1,9 @@
 'use strict';
 
 const config = {
-    "chain": "osmosis-1",
-    "addr_prefix": "osmo",
-    "rest": "http://localhost:1317",
+    "chain": "juno-1",
+    "addr_prefix": "juno",
+    "rpc": "https://rpc-juno-old-archive.cosmoapi.com",
     "output": "/home/ubuntu/output.csv",    // must be .csv
     "startBlock": 1,                        // must not be 0
     "maxBlocks": 0                          // 0 to walk until latest block
@@ -100,10 +100,10 @@ async function blockwalker(maxblocks) {
         var valid = true;
         if (block == 0) {
             block = config.startBlock;
-            console.log(`-> Start block: ${block} - walking blocks...`);
+            console.log(`-> Start block: ${config.startBlock}, end block: ${config.startBlock + maxblocks} - walking blocks...`);
         }
         try {
-            var res = await axios.get(config.rest + '/blocks/' + block);
+            var res = await axios.get(config.rpc + '/block?height=' + block);
         }
         catch (e) {
             console.log(e);
@@ -113,7 +113,7 @@ async function blockwalker(maxblocks) {
         }
         if (valid) {
             block++;
-            let txs = res.data.block.data.txs;
+            let txs = res.data.result.block.data.txs;
             let ibcCounter = 0;
             txs.forEach((tx) => {
                 var isIbcTx = false;
@@ -152,21 +152,37 @@ async function blockwalker(maxblocks) {
 }
 
 async function getLastBlock() {
+    var tryCons = false;
     try {
-        var res = await axios.get(config.rest + '/blocks/latest');
+        var res = await axios.get(config.rpc + '/status');
     }
     catch (e) {
         console.log(e);
-        return false;
+        tryCons = true;
     }
-    return res.data.block.header.height;
+    if (tryCons) {
+        try {
+            var res = await axios.get(config.rpc + '/consensus_state');
+        }
+        catch (e) {
+            return false;
+        }
+        return parseInt(res.data.result.round_state['height/round/step'].split('/')[0]) - 1;
+    }
+    return res.data.result.sync_info.latest_block_height;
 }
 
 async function main() {
     var maxblocks = config.maxBlocks;
     if (maxblocks == 0) {
         var latest = await getLastBlock();
-        maxblocks = latest - config.startBlock;
+        if (latest != false) {
+            maxblocks = latest - config.startBlock;
+        }
+        else {
+            console.log("Error fetching latest height, please check your endpoint");
+            return;
+        }
     }
     var data = await blockwalker(maxblocks);
 
@@ -182,6 +198,7 @@ async function main() {
     const csv = new ObjectsToCsv(data)
     await csv.toDisk(config.output);
     console.log("done");
+    return;
 }
 
 main();
