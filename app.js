@@ -12,6 +12,7 @@ const config = {
 const { Tx } = require('cosmjs-types/cosmos/tx/v1beta1/tx');
 const { PubKey } = require('cosmjs-types/cosmos/crypto/secp256k1/keys');
 const { pubkeyToAddress } = require('@cosmjs/amino');
+const { PublicKey } = require('@injectivelabs/sdk-ts/dist/local');
 const axios = require('axios');
 const ObjectsToCsv = require('objects-to-csv')
 
@@ -63,12 +64,20 @@ function sortRelayTxs(txs, data) {
     txs.forEach((tx) => {
         let address = "";
         if (tx.authInfo.fee.granter == "") {
-            let key = PubKey.toJSON(PubKey.decode(tx.authInfo.signerInfos[0].publicKey.value)).key.toString();
-            let pubkey = {
-                "type": "tendermint/PubKeySecp256k1",
-                "value": key
+            if (config.addr_prefix === "inj" || config.addr_prefix === "evmos") {
+                let key = PubKey.toJSON(PubKey.decode(tx.authInfo.signerInfos[0].publicKey.value)).key.toString();
+                let pubkey = PublicKey.fromBase64(key)
+                address = pubkey.toAddress().toBech32(config.addr_prefix);
             }
-            address = pubkeyToAddress(pubkey, config.addr_prefix);
+
+            else {
+                let key = PubKey.toJSON(PubKey.decode(tx.authInfo.signerInfos[0].publicKey.value)).key.toString();
+                let pubkey = {
+                    "type": "tendermint/PubKeySecp256k1",
+                    "value": key
+                }
+                address = pubkeyToAddress(pubkey, config.addr_prefix);
+            }
         }
         else address = tx.authInfo.fee.granter;
         var indb = false;
@@ -129,6 +138,7 @@ async function blockwalker(maxblocks) {
                     delete log_data.body;
                     delete log_data.signatures;
                     results.push(log_data);
+
                     ibcCounter++;
                 }
             });
