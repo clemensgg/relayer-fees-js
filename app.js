@@ -64,7 +64,7 @@ function sortRelayTxs(txs, data) {
     txs.forEach((tx) => {
         let address = "";
         if (tx.authInfo.fee.granter == "") {
-            if (config.addr_prefix === "inj" || config.addr_prefix === "evmos") {
+            if (tx.authInfo.signerInfos[0].publicKey.typeUrl.includes("ethsecp256k1.PubKey")) {
                 let key = PubKey.toJSON(PubKey.decode(tx.authInfo.signerInfos[0].publicKey.value)).key.toString();
                 let pubkey = PublicKey.fromBase64(key)
                 address = pubkey.toAddress().toBech32(config.addr_prefix);
