@@ -214,7 +214,7 @@ async function main() {
 
     data.forEach((relayer) => {
         console.log(relayer.address);
-        console.log(`total txs: ${relayer.total_txs}`);
+        console.log(`total ibc client updates: ${relayer.total_client_updates}`);
         relayer.total_fees.forEach((fee) => {
             console.log(`denom: ${fee.denom} amount: ${fee.amount}`);
         });
