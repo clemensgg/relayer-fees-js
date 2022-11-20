@@ -1,26 +1,32 @@
 'use strict';
 
 const config = {
-    "chain": "juno-1",
-    "addr_prefix": "juno",
-    "rpc": "https://rpc-juno-old-archive.cosmoapi.com",
-    "output": "/home/ubuntu/output.csv",    // must be .csv
-    "startBlock": 1,                        // must not be 0
-    "maxBlocks": 0                          // 0 to walk until latest block
+    "chain": "sputnik",
+    "addr_prefix": "cosmos",
+    "rpc": "http://<YOUR-RPC-ENDPOINT>",
+    "output": "./output.csv",    // must be .csv
+    "startBlock": 1,             // must not be 0
+    "maxBlocks": 0               // 0 to walk until latest block
 }
 
+const axios = require('axios');
+const ObjectsToCsv = require('objects-to-csv')
+
 const { Tx } = require('cosmjs-types/cosmos/tx/v1beta1/tx');
+const { MsgUpdateClient } = require('cosmjs-types/ibc/core/client/v1/tx');
 const { PubKey } = require('cosmjs-types/cosmos/crypto/secp256k1/keys');
 const { pubkeyToAddress } = require('@cosmjs/amino');
 const { PublicKey } = require('@injectivelabs/sdk-ts/dist/local');
-const axios = require('axios');
-const ObjectsToCsv = require('objects-to-csv')
 
 function calculateFeeTotals(data) {
     data.forEach((relayer) => {
         if (relayer.hasOwnProperty('txs')) {
+            let effectedTxs = 0;
             var totalFees = [];
             relayer.txs.forEach((tx) => {
+                if (tx.effected) {
+                    effectedTxs++;
+                }
                 var feeamounts = tx.authInfo.fee.amount;
                 var valid = false;
                 feeamounts.forEach((fee) => {
@@ -37,7 +43,8 @@ function calculateFeeTotals(data) {
             });
             if (relayer.hasOwnProperty('total_fees') == false) {
                 relayer.total_fees = totalFees;
-                relayer.total_txs = relayer.txs.length;
+                relayer.total_client_updates = relayer.txs.length;
+                relayer.effected_client_updates = effectedTxs;
             }
             else {
                 totalFees.forEach((newFee) => {
@@ -52,7 +59,8 @@ function calculateFeeTotals(data) {
                         relayer.total_fees.push(newFee);
                     }
                 });
-                relayer.total_txs = parseInt(relayer.total_txs) + parseInt(relayer.txs.length);
+                relayer.total_client_updates = parseInt(relayer.total_client_updates) + parseInt(relayer.txs.length);
+                relayer.effected_txs = parseInt(relayer.effected_client_updates) + parseInt(effectedTxs);
             }
             delete relayer.txs;
         }
@@ -111,6 +119,7 @@ async function blockwalker(maxblocks) {
             block = config.startBlock;
             console.log(`-> Start block: ${config.startBlock}, end block: ${config.startBlock + maxblocks} - walking blocks...`);
         }
+        else console.log(`block ${block}`)
         try {
             var res = await axios.get(config.rpc + '/block?height=' + block);
         }
@@ -123,27 +132,34 @@ async function blockwalker(maxblocks) {
         if (valid) {
             block++;
             let txs = res.data.result.block.data.txs;
-            let ibcCounter = 0;
+            let ibcUpdateCounter = 0;
             txs.forEach((tx) => {
-                var isIbcTx = false;
                 let buff = Buffer.from(tx, 'base64');
-                let msgs = Tx.decode(buff).body.messages;
+                let transaction = Tx.decode(buff);
+                let msgs = transaction.body.messages;
+                let isIbcClientUpdate = false;
                 msgs.forEach((msg) => {
-                    if (msg.typeUrl.includes('/ibc') && msg.typeUrl != "/ibc.applications.transfer.v1.MsgTransfer") {
-                        isIbcTx = true
+                    if (msg.typeUrl == '/ibc.core.client.v1.MsgUpdateClient') {
+                        msg.value = MsgUpdateClient.decode(msg.value);
+
+                        // 07-tendermint-0 is the CCV client for provider-chain
+                        if (msg.value.clientId == '07-tendermint-0') {
+                            isIbcClientUpdate = true;
+                        }
                     }
                 });
-                if (isIbcTx) {
-                    var log_data = Tx.decode(buff);
-                    delete log_data.body;
-                    delete log_data.signatures;
-                    results.push(log_data);
-
-                    ibcCounter++;
+                if (isIbcClientUpdate) {
+                    delete transaction.body;
+                    delete transaction.signatures;
+                    if (ibcUpdateCounter == 0) {
+                        transaction.effected = true;
+                    } else transaction.effected = false;
+                    results.push(transaction);
+                    ibcUpdateCounter++;
                 }
             });
-            if (ibcCounter != 0) {
-                console.log(`block ${block} logged txs: ${ibcCounter}`);
+            if (ibcUpdateCounter != 0) {
+                console.log(`block ${block} 07-tendermint-0 client updates: ${ibcUpdateCounter}`);
             }
         }
         // sort txs, calculate totals & purge tx data every 10k results to save RAM
