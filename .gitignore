@@ -1,1 +1,8 @@
 output.csv
+concat_csv.js
+node_modules
+bin
+obj
+relayer-fees-jc.njsproj
+relayer-fees-js.sln
+yarn.lock
