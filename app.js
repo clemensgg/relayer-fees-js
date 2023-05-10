@@ -12,7 +12,7 @@ const config = {
 const { Tx } = require('cosmjs-types/cosmos/tx/v1beta1/tx');
 const { PubKey } = require('cosmjs-types/cosmos/crypto/secp256k1/keys');
 const { pubkeyToAddress } = require('@cosmjs/amino');
-const { PublicKey } = require('@injectivelabs/sdk-ts/dist/local');
+const { PublicKey } = require('@injectivelabs/sdk-ts');
 const axios = require('axios');
 const ObjectsToCsv = require('objects-to-csv')
 
