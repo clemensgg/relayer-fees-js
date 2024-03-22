@@ -127,12 +127,16 @@ async function blockwalker(maxblocks) {
             txs.forEach((tx) => {
                 var isIbcTx = false;
                 let buff = Buffer.from(tx, 'base64');
-                let msgs = Tx.decode(buff).body.messages;
-                msgs.forEach((msg) => {
-                    if (msg.typeUrl.includes('/ibc') && msg.typeUrl != "/ibc.applications.transfer.v1.MsgTransfer") {
-                        isIbcTx = true
-                    }
-                });
+                try {
+                    let msgs = Tx.decode(buff).body.messages;
+                    msgs.forEach((msg) => {
+                        if (msg.typeUrl.includes('/ibc') && msg.typeUrl != "/ibc.applications.transfer.v1.MsgTransfer") {
+                            isIbcTx = true
+                        }
+                    });
+                } catch(e) {
+                    console.log(e);
+                }
                 if (isIbcTx) {
                     var log_data = Tx.decode(buff);
                     delete log_data.body;
